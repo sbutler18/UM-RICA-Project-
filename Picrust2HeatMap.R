@@ -77,13 +77,15 @@ plot_ordination(phy, phy_ord2, color= "Time_Point")
 plot_ordination_utils(phy, phy_ord2, color= "Time_Point", plot.arrow = TRUE,
                       scale.arrow = 1.3, top.taxa = 5)
 
-#plot_ordination##test if they are different
+#plot_ordination##test if they are different 
+
+######SIGNIGICANT pval < 0.001
 library("pairwiseAdonis")
 dist.uf <- phyloseq::distance(phy_clr, method = "euclidean")
-pairwise.adonis(t(otu_table(phy_clr)), sample_data(phy_clr)$Tree, sim.method = "euclidean",
+pairwise.adonis(t(otu_table(phy_clr)), sample_data(phy_clr)$Time_Point, sim.method = "euclidean",
                 p.adjust.m = "bonferroni")
-?pairwise.adonis2
-#heat map for pathways
+
+#heat map for pathways 
 pi_phylum = tax_glom(pi, taxrank = "Superclass2",NArm=FALSE)
 plot_heatmap(pi_phylum,"NMDS", "bray", "Time_Point", "Superclass2", first.sample="T1")
 
