@@ -67,31 +67,28 @@ pi <-pi %>% subset_samples(Sample.NTC.Control!="32")
 #make a pcOA with time point
 phy_clr = microbiome::transform(pi, 'clr')
 phy_ord= ordinate(phy_clr, "RDA", "euclidean")
-plot_ordination(phy, phy_ord, color= "Time_Point")
+plot_ordination(pi, phy_ord, color= "Spirochaetaceae_ANCOMpres")
 
 #make a NMDS with time point
 phy_ord2= ordinate(phy_clr, "NMDS", "euclidean")
+plot_ordination(pi, phy_ord2, color= "Time_Point", )
 
-plot_ordination(phy, phy_ord2, color= "Time_Point")
-
-plot_ordination_utils(phy, phy_ord2, color= "Time_Point", plot.arrow = TRUE,
-                      scale.arrow = 1.3, top.taxa = 5)
-
-#plot_ordination##test if they are different 
-
-######SIGNIGICANT pval < 0.001
+#plot_ordination##test if they are different
 library("pairwiseAdonis")
 dist.uf <- phyloseq::distance(phy_clr, method = "euclidean")
 pairwise.adonis(t(otu_table(phy_clr)), sample_data(phy_clr)$Time_Point, sim.method = "euclidean",
                 p.adjust.m = "bonferroni")
 
-#heat map for pathways 
+
+?pairwise.adonis2
+#heat map for pathways
 pi_phylum = tax_glom(pi, taxrank = "Superclass2",NArm=FALSE)
-plot_heatmap(pi_phylum,"NMDS", "bray", "Time_Point", "Superclass2", first.sample="T1")
+plot_heatmap(pi_phylum,"NMDS", "bray", "Time_Point", "Superclass2", first.sample="T1")+
+  facet_grid(.~Time_Point, scales = "free")
 
 
 ########
-#ANCOM-BC2 with just timepoint no grouping and using ASVs not by Family 
+#ANCOM-BC2 with just timepoint no grouping and using ssuperclass not by pathways  
 ########
 library(ANCOMBC)
 pi_ancom = mia::makeTreeSummarizedExperimentFromPhyloseq(pi)
@@ -149,7 +146,7 @@ df_fig_TP3 <- left_join(df_fig_TP3, pathway_map, by="taxon")
 df_fig_TP3$taxon = factor(df_fig_TP3$taxon, levels = df_fig_TP3$taxon)
 
 
-df_fig_TP3 %>% ggplot(aes(x = taxon, y = lfc_Time_PointT2, fill = direct)) + 
+lfc_path <-df_fig_TP3 %>% ggplot(aes(x = taxon, y = lfc_Time_PointT2, fill = direct)) + 
   geom_bar(stat = "identity", width = 0.7, color = "black", 
            position = position_dodge(width = 0.4))+
   geom_errorbar(aes(ymin = lfc_Time_PointT2 - se_Time_PointT2, ymax = lfc_Time_PointT2 + se_Time_PointT2), 
@@ -161,4 +158,178 @@ df_fig_TP3 %>% ggplot(aes(x = taxon, y = lfc_Time_PointT2, fill = direct)) +
         legend.text = element_text(size = 15),
         title = element_text(size = 15))+
   labs(y="Log Fold Change", x="Pathway", title = "Log Fold Change from T1 to T2")
+
+
+
+#Volcano plot at the pathway level
+
+#create an ancomc for pathway level to make volcano 
+set.seed(123)
+
+output2 = ancombc2(
+  data = pi_ancom,
+  assay_name = "counts",
+  tax_level = "pathway",
+  fix_formula = "Time_Point",
+  rand_formula = NULL,
+  p_adj_method = "holm",
+  pseudo_sens = TRUE,
+  prv_cut = 0.10,
+  lib_cut = 1000,
+  s0_perc = 0.05,
+  group = "Time_Point",
+  struc_zero = TRUE,
+  neg_lb = TRUE,
+  alpha = 0.05,
+  n_cl = 2,
+  verbose = TRUE,
+  global = FALSE,  # Deactivated due to <3 categories
+  pairwise = FALSE,  # Deactivated due to <3 categories
+  dunnet = FALSE,  # Deactivated due to <3 categories
+  trend = FALSE,  # Deactivated due to <3 categories
+  iter_control = list(
+    tol = 1e-2,
+    max_iter = 20,
+    verbose = TRUE
+  ),
+  em_control = list(
+    tol = 1e-5,
+    max_iter = 100
+  ),
+  lme_control = lme4::lmerControl(),
+  mdfdr_control = list(
+    fwer_ctrl_method = "holm",
+    B = 100))
+
+res_prim2 = output2$res
+
+
+#label the data 
+res_prim2_lab <- res_prim2 %>%
+  mutate(reg_status = case_when(lfc_Time_PointT2 < (-0.5)  ~ "Down Regulated",
+                                lfc_Time_PointT2 > 0.5  ~ "Up Regulated",))
+
+
+res_prim3_lab$delabel <- ifelse(res_prim3_lab$taxon %in% head(res_prim3_lab[order(res_prim3_lab$p_Time_PointT2), "taxon"], 9), res_prim3_lab$taxon, NA)
+
+#create the plot 
+path_volc <- ggplot(res_prim2_lab, aes(x=lfc_Time_PointT2, y= -log10(p_Time_PointT2), col = reg_status))+
+  geom_point()+
+  geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') +
+  geom_vline(xintercept = c(-0.5, 0.5), col = "gray", linetype = 'dashed')+ 
+  scale_color_manual(values = c("#00AFBB", "#bb0c00", "grey"), # to set the colours of our variable  
+                     labels = c("Decrease", "Increase" , "Not significant"))+
+  labs(title = "Volcano Plot for Picrust2 data", 
+       x = "Log Fold Change from T1 to T2", y = "-log10(p-value)",
+       color="Pathway Abundance Status")+
+  theme_classic2()+
+  theme(axis.text.x = element_text( size=15),
+        axis.title.y = element_text(size=15),
+        axis.title.x = element_text(size=15),
+        legend.text = element_text(size = 15),
+        title = element_text(size = 15))
+
+
+#combined the two graphs 
+
+ggarrange(lfc_path , path_volc, font.label = list(size = 10, color = "black"), labels=c("A", "B"), common.legend = FALSE)
+
+
+
+#####
+## same same but for the superclass level used to show lfc graph
+####
+#label the data 
+res_prim3_lab <- res_prim3 %>%
+  mutate(reg_status = case_when(lfc_Time_PointT2 < (-0.5) ~ "Down Regulated",
+                                lfc_Time_PointT2 > 0.5  ~ "Up Regulated",))
+
+
+res_prim3_lab$delabel <- ifelse(res_prim3_lab$taxon %in% head(res_prim3_lab[order(res_prim3_lab$p_Time_PointT2), "taxon"], 9), res_prim3_lab$taxon, NA)
+
+#create the plot 
+ggplot(res_prim3_lab, aes(x=lfc_Time_PointT2, y= -log10(p_Time_PointT2), col = reg_status))+
+  geom_point()+
+  geom_hline(yintercept = -log10(0.05), col = "gray", linetype = 'dashed') +
+  geom_vline(xintercept = c(-0.5, 0.5), col = "gray", linetype = 'dashed')+ 
+  scale_color_manual(values = c("#00AFBB", "#bb0c00", "grey"), # to set the colours of our variable  
+                     labels = c("Downregulated", "Upregulated" , "Not significant"))+
+  labs(title = "Volcano Plot for Picrust2 data", 
+       x = "Log Fold Change from T1 to T2", y = "-log10(p-value)",
+       color="Pathway Status")
+
+
+
+#pathway abundance 
+
+
+library("randomForestSRC")
+
+predictors <- t(otu_table(pi))
+response <- as.factor(sample_data(pi)$Time_Point)
+rf.data <- data.frame(response, predictors)
+head(rf.data, n=2)
+
+
+tp.classify <- rfsrc(response~., data = rf.data, ntree = 2000,
+                       importance="permute", csv.num=TRUE)
+
+
+tp.classify
+plot(tp.classify)
+
+ggsave("/Volumes/RSMASFILES2/ThesisPlots/tp.classify.png", width = 11, height = 9, units = "in",
+       dpi=300)
+
+##Combine top important ASVs from each reef
+set.seed(2)
+# Create a list to store the results
+result_list <- list()
+
+# Define the column names for sorting
+sort_columns <- c("T1", "T2")
+
+# Loop through the sorting columns
+for (col in sort_columns) {
+  result <- cbind(as.data.frame(tp.classify$importance), as.data.frame(tax_table(pi))) %>%
+    arrange(desc(get(col))) %>%
+    head(n=5) %>%
+    distinct()  # Remove duplicate rows
+  
+  # Assign the result to the list
+  result_list[[paste0(col, "_5")]] <- result
+}
+
+# Combine the results into a single data frame
+tp_df <- do.call(rbind, result_list)
+
+rf_trip_df <- tp_df %>%
+  rownames_to_column("ID") %>%
+  separate("ID", into = c("Time_Point", "pathway"), sep = "\\.", remove = FALSE) %>% 
+  unite("Trip_top", Time_Point, na.rm = TRUE, remove = FALSE) %>%
+  column_to_rownames("ID")
+ 
+df_trip_long<-result  %>%
+  rownames_to_column() %>%
+  pivot_longer(cols = c(T1, T2), names_to = "variable") %>%
+  group_by(variable)
+
+
+#make a plot of importance valued all overall imporatance 
+
+ggplot(df_trip_long,
+  aes(x=all, y = value)) + 
+  geom_point(aes(shape=variable, color=pathway ), 
+             alpha=0.7,
+             size=4) +
+  scale_color_manual("Pathway", 
+      values=c( "#AD6F3B", "#6F8FAF", "#800020", "lightpink", "#56B4E9")) +
+  theme_classic2()+
+  ylab("Pathway Importance per Time Point") +
+  xlab("Overall Pathway Importance") 
+
+ggsave("/Volumes/RSMASFILES2/ThesisPlots/rf_picrust.png", width = 11, height = 9, units = "in",
+       dpi=300)
+
+
 
